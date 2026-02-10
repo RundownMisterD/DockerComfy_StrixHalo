@@ -1,11 +1,23 @@
 # =============================================================================
-# ComfyUI Docker Compose for AMD Ryzen AI Max Pro 390 (Strix Halo / gfx1151)
+# ComfyUI Docker Compose — Windows WSL2 + Docker Desktop
+# AMD Ryzen AI Max Pro 390 (Strix Halo / gfx1151)
+#
+# Prerequisites:
+#   1. Windows 10/11 with WSL2 enabled
+#   2. Docker Desktop with WSL2 backend
+#   3. AMD Adrenalin driver with WSL2 support (or the "PyTorch on Windows
+#      Edition 7.1.1" preview driver for best ROCm compatibility)
+#   4. ROCm installed inside your WSL2 distro (see setup instructions)
 #
 # Usage:
-#   docker compose up -d          # start in background
-#   docker compose logs -f        # follow logs
-#   docker compose down            # stop
-#   docker compose build --no-cache  # rebuild from scratch
+#   docker compose build              # build image
+#   docker compose up -d              # start in background
+#   docker compose logs -f            # follow logs
+#   docker compose down               # stop
+#   docker compose build --no-cache   # rebuild from scratch
+#
+# For native Linux, use the override:
+#   docker compose -f docker-compose.yml -f docker-compose.linux.yml up -d
 #
 # ComfyUI will be available at http://localhost:8188
 # =============================================================================
@@ -23,25 +35,17 @@ services:
     image: comfyui-strix-halo:latest
     container_name: comfyui-strix-halo
 
-    # ---- ROCm GPU device passthrough ----------------------------------------
+    # ---- WSL2 GPU passthrough ------------------------------------------------
+    # WSL2 uses /dev/dxg (DirectX Graphics) instead of /dev/kfd (native Linux).
+    # The GPU-PV layer translates ROCm/HIP calls through the Windows driver.
     devices:
-      - /dev/kfd:/dev/kfd
-      - /dev/dri:/dev/dri
-    group_add:
-      - video
-      - render
-    security_opt:
-      - seccomp=unconfined
-    ipc: host
-    shm_size: "8G"
-
-    # ---- Port mapping --------------------------------------------------------
-    ports:
-      - "${COMFYUI_PORT:-8188}:8188"
-
-    # ---- Volume mounts (all ComfyUI data externalized) -----------------------
-    # All paths are configurable via .env. Defaults to ./data/<subdir>.
+      - /dev/dxg:/dev/dxg
     volumes:
+      # WSL2 GPU driver libraries (provided by Windows host via GPU-PV)
+      - /usr/lib/wsl:/usr/lib/wsl:ro
+      # ROCm installation from the WSL2 host distro
+      - ${ROCM_PATH:-/opt/rocm}:/opt/rocm:ro
+      # ComfyUI data directories (all externalized to host)
       - ${COMFYUI_MODELS_DIR:-./data/models}:/app/ComfyUI/models
       - ${COMFYUI_OUTPUT_DIR:-./data/output}:/app/ComfyUI/output
       - ${COMFYUI_INPUT_DIR:-./data/input}:/app/ComfyUI/input
@@ -49,8 +53,24 @@ services:
       - ${COMFYUI_USER_DIR:-./data/user}:/app/ComfyUI/user
       - ${COMFYUI_TEMP_DIR:-./data/temp}:/app/ComfyUI/temp
 
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp=unconfined
+    group_add:
+      - video
+      - render
+    ipc: host
+    shm_size: "8G"
+
+    # ---- Port mapping --------------------------------------------------------
+    ports:
+      - "${COMFYUI_PORT:-8188}:8188"
+
     # ---- Strix Halo GPU environment -----------------------------------------
     environment:
+      # WSL2 GPU driver library path (critical for /dev/dxg access)
+      - LD_LIBRARY_PATH=/usr/lib/wsl/lib:/opt/rocm/lib:${LD_LIBRARY_PATH:-}
       # GPU compute configuration
       - HSA_OVERRIDE_GFX_VERSION=${HSA_OVERRIDE_GFX_VERSION:-11.0.0}
       - HSA_ENABLE_SDMA=${HSA_ENABLE_SDMA:-0}
@@ -63,6 +83,6 @@ services:
       - FLASH_ATTENTION_TRITON_AMD_ENABLE=${FLASH_ATTENTION_TRITON_AMD_ENABLE:-1}
       - TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=${TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL:-1}
       # Extra ComfyUI CLI arguments (optional)
-      - COMFYUI_EXTRA_ARGS=${COMFYUI_EXTRA_ARGS:-}
+      - COMFYUI_EXTRA_ARGS=${COMFYUI_EXTRA_ARGS:---bf16-vae --disable-mmap}
 
     restart: unless-stopped

@@ -5,6 +5,10 @@
 # ROCm: Uses gfx1100 compatibility mode via HSA_OVERRIDE_GFX_VERSION
 #       (currently 2-6x faster than native gfx1151 kernels in many workloads)
 #
+# Runs on:
+#   - Windows 10/11 via WSL2 + Docker Desktop (primary target)
+#   - Native Linux with docker-compose.linux.yml override
+#
 # Build:
 #   docker compose build
 #   docker build -t comfyui-strix-halo .

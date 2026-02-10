@@ -1,0 +1,40 @@
+# =============================================================================
+# Docker Compose override for native Linux (bare metal, no WSL2)
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.linux.yml up -d
+#
+# This replaces the WSL2 GPU passthrough with native Linux /dev/kfd + /dev/dri.
+# Remove the WSL2-specific volume mounts and LD_LIBRARY_PATH.
+# =============================================================================
+
+services:
+  comfyui:
+    # ---- Native Linux GPU passthrough (replaces WSL2 /dev/dxg) ---------------
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+
+    # ---- Override volumes: remove WSL mounts, keep data dirs -----------------
+    volumes:
+      - ${COMFYUI_MODELS_DIR:-./data/models}:/app/ComfyUI/models
+      - ${COMFYUI_OUTPUT_DIR:-./data/output}:/app/ComfyUI/output
+      - ${COMFYUI_INPUT_DIR:-./data/input}:/app/ComfyUI/input
+      - ${COMFYUI_CUSTOM_NODES_DIR:-./data/custom_nodes}:/app/ComfyUI/custom_nodes
+      - ${COMFYUI_USER_DIR:-./data/user}:/app/ComfyUI/user
+      - ${COMFYUI_TEMP_DIR:-./data/temp}:/app/ComfyUI/temp
+
+    # ---- No SYS_PTRACE needed on native Linux --------------------------------
+    cap_add: []
+
+    environment:
+      # No WSL2 LD_LIBRARY_PATH override needed on native Linux
+      - HSA_OVERRIDE_GFX_VERSION=${HSA_OVERRIDE_GFX_VERSION:-11.0.0}
+      - HSA_ENABLE_SDMA=${HSA_ENABLE_SDMA:-0}
+      - GPU_MAX_ALLOC_PERCENT=${GPU_MAX_ALLOC_PERCENT:-100}
+      - GPU_MAX_HEAP_SIZE=${GPU_MAX_HEAP_SIZE:-100}
+      - HIP_VISIBLE_DEVICES=${HIP_VISIBLE_DEVICES:-0}
+      - PYTORCH_HIP_ALLOC_CONF=${PYTORCH_HIP_ALLOC_CONF:-backend:native,expandable_segments:True,garbage_collection_threshold:0.9,max_split_size_mb:512}
+      - FLASH_ATTENTION_TRITON_AMD_ENABLE=${FLASH_ATTENTION_TRITON_AMD_ENABLE:-1}
+      - TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=${TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL:-1}
+      - COMFYUI_EXTRA_ARGS=${COMFYUI_EXTRA_ARGS:---bf16-vae --disable-mmap}
